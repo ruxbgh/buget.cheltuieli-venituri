@@ -507,7 +507,7 @@
       Generează un sfat personalizat pe baza cheltuielilor tale din această lună.
     </div>
     <div class="advice-btn-row">
-      <button class="btn btn-gold" id="adviceBtn" onclick="generateAdvice()">✨ Generează sfat cu AI</button>
+      <button class="btn btn-gold" id="adviceBtn" onclick="generateAdvice()">✨ Generează sfat</button>
     </div>
   </div>
 
@@ -677,8 +677,8 @@ function renderAdvice() {
   }
 }
 
-// ── GENERATE AI ADVICE ────────────────────────────────────
-async function generateAdvice() {
+// ── GENERATE LOCAL ADVICE ─────────────────────────────────
+function generateAdvice() {
   const md = getMonthData();
   const totalIn  = md.income.reduce((s,e) => s + e.amt, 0);
   const totalExp = md.expense.reduce((s,e) => s + e.amt, 0);
@@ -687,49 +687,69 @@ async function generateAdvice() {
 
   const cats = {};
   md.expense.forEach(e => { cats[e.cat] = (cats[e.cat]||0) + e.amt; });
-  const catStr = Object.entries(cats).map(([k,v]) => `${k}: ${v.toFixed(0)} lei`).join(', ');
+  const sortedCats = Object.entries(cats).sort((a,b) => b[1]-a[1]);
+  const topCat = sortedCats[0]?.[0] || null;
+  const topCatAmt = sortedCats[0]?.[1] || 0;
+  const topCatPct = totalExp > 0 ? Math.round((topCatAmt/totalExp)*100) : 0;
 
   const btn = document.getElementById('adviceBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>Se generează...';
+  btn.innerHTML = '<span class="spin"></span>Se analizează...';
 
-  const prompt = `Ești un consultant financiar personal pentru România. Analizează bugetul lunar al utilizatorului și oferă un sfat practic, personalizat și motivant de economisire.
+  setTimeout(() => {
+    let paragraphs = [];
 
-Date pentru ${MONTHS_RO[currentMonth]} ${currentYear}:
-- Venituri totale: ${totalIn.toFixed(0)} lei
-- Cheltuieli totale: ${totalExp.toFixed(0)} lei
-- Sold: ${balance.toFixed(0)} lei
-- Rata de economisire: ${rate}%
-- Distribuția cheltuielilor: ${catStr || 'nicio cheltuială înregistrată'}
+    // 1. Evaluare situație
+    if (totalIn === 0 && totalExp === 0) {
+      paragraphs.push(`Nu ai înregistrat încă date pentru ${MONTHS_RO[currentMonth]}. Începe prin a adăuga veniturile și cheltuielile lunii pentru a primi sfaturi personalizate.`);
+      paragraphs.push(`Urmărirea bugetului este primul pas spre libertatea financiară. Chiar și 10 minute pe săptămână pot face o diferență mare!`);
+    } else if (totalIn === 0) {
+      paragraphs.push(`Ai înregistrat cheltuieli de ${fmt(totalExp)} fără venituri asociate acestei luni. Asigură-te că adaugi și veniturile pentru o imagine completă a bugetului tău.`);
+    } else if (rate >= 20) {
+      paragraphs.push(`Felicitări! Ai reușit să economisești ${rate}% din venituri în ${MONTHS_RO[currentMonth]} — un rezultat excelent! Soldul pozitiv de ${fmt(balance)} arată că ești pe drumul cel bun.`);
+      if (topCat) {
+        paragraphs.push(`Cea mai mare categorie de cheltuieli este „${topCat}" (${topCatPct}% din total). Menține acest nivel și încearcă să investești o parte din economii lunar.`);
+      }
+      paragraphs.push(`Obiectiv pentru luna viitoare: menține rata de economisire peste 20% și ia în calcul plasarea a cel puțin ${fmt(balance * 0.5)} într-un depozit sau fond de investiții.`);
+    } else if (rate > 0 && rate < 20) {
+      paragraphs.push(`Ai economisit ${rate}% din venituri în ${MONTHS_RO[currentMonth]} — un început bun, dar există spațiu de îmbunătățire. Soldul tău este ${fmt(balance)}.`);
+      if (topCat) {
+        paragraphs.push(`Cheltuielile pe „${topCat}" reprezintă ${topCatPct}% din total (${fmt(topCatAmt)}). Analizează dacă poți reduce această categorie cu 10-15% luna viitoare.`);
+      }
+      paragraphs.push(`Obiectiv pentru luna viitoare: încearcă să ajungi la o rată de economisire de 20%, adică să pui deoparte cel puțin ${fmt(totalIn * 0.2)}.`);
+    } else if (balance < 0) {
+      paragraphs.push(`Atenție — cheltuielile din ${MONTHS_RO[currentMonth]} depășesc veniturile cu ${fmt(Math.abs(balance))}. Este important să acționezi acum pentru a evita acumularea de datorii.`);
+      if (topCat) {
+        paragraphs.push(`Categoria „${topCat}" este cea mai mare cheltuială (${topCatPct}% din total). Identifică în această categorie cel puțin 2-3 cheltuieli neesențiale pe care le poți elimina.`);
+      }
+      paragraphs.push(`Obiectiv urgent: echilibrează bugetul luna viitoare. Fă o listă cu toate cheltuielile fixe și caută să reduci cheltuielile variabile cu cel puțin ${fmt(Math.abs(balance) * 1.1)}.`);
+    } else {
+      paragraphs.push(`Bugetul tău pentru ${MONTHS_RO[currentMonth]} este echilibrat — cheltuielile acoperă exact veniturile. Acesta este un punct de start bun.`);
+      paragraphs.push(`Încearcă să creezi un mic surplus luna viitoare. Chiar și 5% din venituri pus deoparte (${fmt(totalIn * 0.05)}) face diferența pe termen lung.`);
+    }
 
-Oferă:
-1. O evaluare scurtă a situației (1-2 propoziții)
-2. Cel mai important sfat concret de economisire pentru luna viitoare
-3. Un obiectiv financiar specific și realist pentru luna viitoare
+    // Sfaturi suplimentare per categorie
+    const sfaturiCat = {
+      'Divertisment': 'Divertismentul poate fi bucuros și economic — caută oferte, abonamente partajate sau activități gratuite în oraș.',
+      'Îmbrăcăminte': 'Pentru îmbrăcăminte, încearcă regula „30 de purtări": cumpără doar ce vei purta cel puțin de 30 de ori.',
+      'Alimentație': 'Planificarea meniului săptămânal și cumpărăturile cu listă pot reduce cheltuielile cu alimentele cu până la 25%.',
+      'Abonamente': 'Verifică periodic lista de abonamente active — sunt șanse să plătești pentru servicii pe care nu le mai folosești.',
+      'Transport': 'Combină mai multe destinații într-o singură ieșire și ia în calcul transportul în comun pentru traseele zilnice.',
+      'Diverse': 'Cheltuielile „diverse" se adună rapid. Încearcă să le clasifici mai specific pentru a identifica unde merge banii.',
+    };
 
-Răspunde în română, în max 150 de cuvinte, într-un ton cald și pozitiv. Formatează răspunsul cu paragrafe scurte (fără bullet points). Nu folosi markdown sau asteriscuri.`;
+    if (topCat && sfaturiCat[topCat] && rate >= 0) {
+      paragraphs.push(sfaturiCat[topCat]);
+    }
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-    const text = data.content?.find(b => b.type === 'text')?.text || 'Nu am putut genera un sfat.';
-    md.advice = text.replace(/\n/g, '<br>');
+    const text = paragraphs.join('<br><br>');
+    md.advice = text;
     setMonthData(md);
     document.getElementById('adviceText').innerHTML = md.advice;
-  } catch(e) {
-    document.getElementById('adviceText').textContent = 'Eroare la generarea sfatului. Verifică conexiunea și încearcă din nou.';
-  }
 
-  btn.disabled = false;
-  btn.innerHTML = '✨ Regenerează sfat';
+    btn.disabled = false;
+    btn.innerHTML = '✨ Regenerează sfat';
+  }, 600);
 }
 
 // ── GENERATE PDF ──────────────────────────────────────────
